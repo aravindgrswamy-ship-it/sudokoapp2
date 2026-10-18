@@ -31,7 +31,7 @@
     background: var(--card); color: var(--ink); font-size: 14px; font-weight: 600; }
   .levels button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   .levels small { display: block; font-weight: 400; opacity: .8; font-size: 11px; margin-top: 2px; }
-  #board { display: grid; width: 100%; aspect-ratio: 1; border: 2px solid var(--line-strong);
+  #board { display: grid; flex: none; align-self: center; width: 100%; aspect-ratio: 1; border: 2px solid var(--line-strong);
     border-radius: 6px; overflow: hidden; background: var(--card); touch-action: manipulation; }
   .cell { position: relative; display: flex; align-items: center; justify-content: center;
     border: 1px solid var(--line); font-size: min(7.5vw, 34px); color: var(--user); background: var(--card); cursor: pointer; }
@@ -48,6 +48,12 @@
   #msg { height: 22px; margin: 8px 0 2px; text-align: center; font-size: 14px; color: var(--muted); }
   #msg.win { color: var(--accent); font-weight: 700; font-size: 16px; }
   #pad { display: grid; gap: 8px; margin-top: 6px; }
+  @media (max-height: 760px) {
+    #pad button { height: 44px !important; font-size: 21px !important; }
+    .tools button { padding: 8px 2px !important; }
+    .levels button { padding: 6px 4px !important; }
+    #msg { margin: 4px 0 0 !important; }
+  }
   #pad button { padding: 0; height: 52px; font-size: 24px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--card); color: var(--user); font-weight: 600; position: relative; }
   #pad button:active { background: var(--sel); }
@@ -162,7 +168,24 @@
         boardEl.appendChild(d);
       })(i);
     }
+    fitBoard();
   }
+
+  // Size the board as a square that fits the screen: full width if there is
+  // room, otherwise as tall as the space left after the buttons.
+  function fitBoard() {
+    var app = document.getElementById("app");
+    var wmax = Math.min(app.clientWidth - 28, 492);
+    boardEl.style.width = wmax + "px";
+    boardEl.style.height = wmax + "px";
+    var first = app.firstElementChild, last = app.lastElementChild;
+    var content = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+    var other = content - boardEl.offsetHeight + 30;
+    var size = Math.max(180, Math.min(wmax, window.innerHeight - other));
+    boardEl.style.width = size + "px";
+    boardEl.style.height = size + "px";
+  }
+  window.addEventListener("resize", fitBoard);
 
   function buildPad() {
     var n = game.size;
