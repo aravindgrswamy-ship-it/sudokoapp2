@@ -21,6 +21,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(false);
         s.setBlockNetworkLoads(true);       // strictly offline
+        s.setTextZoom(100);                 // ignore the phone's font-size setting so the grid fits
 
         web.setWebViewClient(new WebViewClient());
         web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
