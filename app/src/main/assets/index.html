@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Sudoku</title>
+<style>
+  :root {
+    --bg: #f4f1ea; --card: #fffdf8; --ink: #1f2a37; --muted: #6b7280;
+    --line: #c9c2b2; --line-strong: #1f2a37; --given: #1f2a37; --user: #1d4ed8;
+    --sel: #dbeafe; --peer: #eef4ff; --same: #bfdbfe; --bad: #fecaca; --bad-ink: #b91c1c;
+    --accent: #2f6f4f; --accent-ink: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --card: #1d2229; --ink: #e5e7eb; --muted: #9ca3af;
+      --line: #3a424d; --line-strong: #9ca3af; --given: #e5e7eb; --user: #7fb0ff;
+      --sel: #27456f; --peer: #232c38; --same: #2f5185; --bad: #5c2323; --bad-ink: #fca5a5;
+      --accent: #4a9d73; --accent-ink: #0b1510;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { max-width: 520px; margin: 0 auto; padding: 12px 14px 18px; display: flex; flex-direction: column; min-height: 100%; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+  #timer { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 16px; min-width: 56px; text-align: right; }
+  .levels { display: flex; gap: 8px; margin-bottom: 12px; }
+  .levels button { flex: 1; padding: 10px 4px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); font-size: 14px; font-weight: 600; }
+  .levels button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .levels small { display: block; font-weight: 400; opacity: .8; font-size: 11px; margin-top: 2px; }
+  #board { display: grid; width: 100%; aspect-ratio: 1; border: 2px solid var(--line-strong);
+    border-radius: 6px; overflow: hidden; background: var(--card); touch-action: manipulation; }
+  .cell { position: relative; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); font-size: min(7.5vw, 34px); color: var(--user); background: var(--card); cursor: pointer; }
+  #board.n4 .cell { font-size: min(11vw, 48px); }
+  .cell.given { color: var(--given); font-weight: 700; }
+  .cell.peer { background: var(--peer); }
+  .cell.same { background: var(--same); }
+  .cell.sel { background: var(--sel); outline: 2px solid var(--user); outline-offset: -2px; z-index: 1; }
+  .cell.bad { background: var(--bad); color: var(--bad-ink); }
+  .cell.bR { border-right: 2px solid var(--line-strong); }
+  .cell.bB { border-bottom: 2px solid var(--line-strong); }
+  .notes { position: absolute; inset: 2px; display: grid; font-size: min(2.6vw, 11px); color: var(--muted); line-height: 1; }
+  .notes span { display: flex; align-items: center; justify-content: center; }
+  #msg { height: 22px; margin: 8px 0 2px; text-align: center; font-size: 14px; color: var(--muted); }
+  #msg.win { color: var(--accent); font-weight: 700; font-size: 16px; }
+  #pad { display: grid; gap: 8px; margin-top: 6px; }
+  #pad button { padding: 0; height: 52px; font-size: 24px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--user); font-weight: 600; position: relative; }
+  #pad button:active { background: var(--sel); }
+  #pad button.done { opacity: .3; }
+  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .tools button { padding: 11px 2px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+    color: var(--ink); font-size: 14px; font-weight: 600; }
+  .tools button.on { background: var(--user); color: #fff; border-color: var(--user); }
+  .tools button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Sudoku</h1>
+    <div id="timer">0:00</div>
+  </header>
+  <div class="levels" id="levels"></div>
+  <div id="board"></div>
+  <div id="msg"></div>
+  <div id="pad"></div>
+  <div class="tools">
+    <button id="undo">Undo</button>
+    <button id="erase">Erase</button>
+    <button id="notes">Notes</button>
+    <button id="hint">Hint</button>
+  </div>
+  <div class="tools" style="grid-template-columns:1fr 1fr">
+    <button id="check">Check</button>
+    <button id="new" class="primary">New game</button>
+  </div>
+</div>
+<script src="sudoku.js"></script>
+<script>
+(function () {
+  var S = window.Sudoku;
+  var boardEl = document.getElementById("board");
+  var padEl = document.getElementById("pad");
+  var msgEl = document.getElementById("msg");
+  var timerEl = document.getElementById("timer");
+  var levelsEl = document.getElementById("levels");
+
+  var level = "easy", game = null, values = [], notes = [], sel = -1;
+  var noteMode = false, history = [], solved = false, startTime = 0, elapsed = 0, tick = null;
+  var showErrors = false;
+
+  function save() {
+    try {
+      localStorage.setItem("sudoku-state", JSON.stringify({
+        level: level, game: game, values: values, notes: notes, elapsed: elapsed, solved: solved
+      }));
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      var s = JSON.parse(localStorage.getItem("sudoku-state") || "null");
+      if (s && s.game && s.values) { return s; }
+    } catch (e) {}
+    return null;
+  }
+
+  function fmt(t) { var m = Math.floor(t / 60), s = t % 60; return m + ":" + (s < 10 ? "0" : "") + s; }
+  function startTimer() {
+    clearInterval(tick);
+    startTime = Date.now() - elapsed * 1000;
+    tick = setInterval(function () {
+      if (solved) return;
+      elapsed = Math.floor((Date.now() - startTime) / 1000);
+      timerEl.textContent = fmt(elapsed);
+      if (elapsed % 5 === 0) save();
+    }, 500);
+    timerEl.textContent = fmt(elapsed);
+  }
+
+  function buildLevels() {
+    levelsEl.innerHTML = "";
+    Object.keys(S.LEVELS).forEach(function (k) {
+      var b = document.createElement("button");
+      var parts = S.LEVELS[k].label.split(" ");
+      b.innerHTML = parts[0] + "<small>" + parts[1].replace(/[()]/g, "") + "</small>";
+      b.className = k === level ? "active" : "";
+      b.onclick = function () { level = k; newGame(); };
+      levelsEl.appendChild(b);
+    });
+  }
+
+  function newGame() {
+    msgEl.textContent = "Generating…"; msgEl.className = "";
+    setTimeout(function () {
+      game = S.generate(level);
+      values = game.puzzle.slice();
+      notes = values.map(function () { return []; });
+      sel = -1; history = []; solved = false; elapsed = 0; showErrors = false;
+      msgEl.textContent = "";
+      buildLevels(); buildBoard(); buildPad(); startTimer(); render(); save();
+    }, 20);
+  }
+
+  function buildBoard() {
+    var n = game.size, box = game.box;
+    boardEl.className = "n" + n;
+    boardEl.style.gridTemplateColumns = "repeat(" + n + ",1fr)";
+    boardEl.style.gridTemplateRows = "repeat(" + n + ",1fr)";
+    boardEl.innerHTML = "";
+    for (var i = 0; i < n * n; i++) {
+      (function (i) {
+        var r = Math.floor(i / n), c = i % n;
+        var d = document.createElement("div");
+        d.className = "cell" + ((c + 1) % box === 0 && c !== n - 1 ? " bR" : "") +
+                      ((r + 1) % box === 0 && r !== n - 1 ? " bB" : "");
+        d.onclick = function () { sel = i; render(); };
+        boardEl.appendChild(d);
+      })(i);
+    }
+  }
+
+  function buildPad() {
+    var n = game.size;
+    padEl.innerHTML = "";
+    padEl.style.gridTemplateColumns = "repeat(" + (n === 4 ? 4 : 9) + ",1fr)";
+    for (var v = 1; v <= n; v++) {
+      (function (v) {
+        var b = document.createElement("button");
+        b.textContent = v; b.dataset.v = v;
+        b.onclick = function () { enter(v); };
+        padEl.appendChild(b);
+      })(v);
+    }
+  }
+
+  function conflicts(i) {
+    var n = game.size, box = game.box, v = values[i];
+    if (!v) return false;
+    var r = Math.floor(i / n), c = i % n;
+    for (var k = 0; k < n; k++) {
+      if (k !== c && values[r * n + k] === v) return true;
+      if (k !== r && values[k * n + c] === v) return true;
+    }
+    var br = r - (r % box), bc = c - (c % box);
+    for (var y = 0; y < box; y++)
+      for (var x = 0; x < box; x++) {
+        var j = (br + y) * n + bc + x;
+        if (j !== i && values[j] === v) return true;
+      }
+    return false;
+  }
+
+  function render() {
+    var n = game.size, box = game.box, cells = boardEl.children;
+    var sr = sel >= 0 ? Math.floor(sel / n) : -1, sc = sel >= 0 ? sel % n : -1;
+    var sv = sel >= 0 ? values[sel] : 0;
+    var counts = {};
+    for (var i = 0; i < n * n; i++) {
+      var el = cells[i], r = Math.floor(i / n), c = i % n;
+      var cls = el.className.replace(/\b(given|peer|same|sel|bad)\b/g, "").replace(/\s+/g, " ").trim();
+      var given = game.puzzle[i] !== 0;
+      if (given) cls += " given";
+      if (sel >= 0) {
+        var peer = r === sr || c === sc ||
+          (Math.floor(r / box) === Math.floor(sr / box) && Math.floor(c / box) === Math.floor(sc / box));
+        if (peer) cls += " peer";
+        if (sv && values[i] === sv) cls += " same";
+        if (i === sel) cls += " sel";
+      }
+      if (!given && values[i] && (showErrors ? values[i] !== game.solution[i] : conflicts(i))) cls += " bad";
+      el.className = cls;
+      if (values[i]) {
+        el.textContent = values[i];
+        counts[values[i]] = (counts[values[i]] || 0) + 1;
+      } else if (notes[i].length) {
+        var h = '<div class="notes" style="grid-template-columns:repeat(' + box + ',1fr);grid-template-rows:repeat(' + box + ',1fr)">';
+        for (var v = 1; v <= n; v++) h += "<span>" + (notes[i].indexOf(v) >= 0 ? v : "") + "</span>";
+        el.innerHTML = h + "</div>";
+      } else {
+        el.textContent = "";
+      }
+    }
+    Array.prototype.forEach.call(padEl.children, function (b) {
+      b.classList.toggle("done", (counts[+b.dataset.v] || 0) >= n);
+    });
+    document.getElementById("notes").classList.toggle("on", noteMode);
+  }
+
+  function pushHistory() {
+    history.push({ values: values.slice(), notes: notes.map(function (a) { return a.slice(); }) });
+    if (history.length > 200) history.shift();
+  }
+
+  function enter(v) {
+    if (solved || sel < 0 || game.puzzle[sel]) return;
+    pushHistory();
+    if (noteMode) {
+      if (values[sel]) values[sel] = 0;
+      var k = notes[sel].indexOf(v);
+      if (k >= 0) notes[sel].splice(k, 1); else notes[sel].push(v);
+    } else {
+      values[sel] = values[sel] === v ? 0 : v;
+      notes[sel] = [];
+      clearPeerNotes(sel, v);
+    }
+    showErrors = false; msgEl.textContent = "";
+    render(); checkWin(); save();
+  }
+
+  function clearPeerNotes(i, v) {
+    var n = game.size, box = game.box, r = Math.floor(i / n), c = i % n;
+    for (var j = 0; j < n * n; j++) {
+      var rr = Math.floor(j / n), cc = j % n;
+      if (rr === r || cc === c ||
+          (Math.floor(rr / box) === Math.floor(r / box) && Math.floor(cc / box) === Math.floor(c / box))) {
+        var k = notes[j].indexOf(v);
+        if (k >= 0) notes[j].splice(k, 1);
+      }
+    }
+  }
+
+  function checkWin() {
+    for (var i = 0; i < values.length; i++) if (values[i] !== game.solution[i]) return;
+    solved = true; clearInterval(tick);
+    msgEl.className = "win";
+    msgEl.textContent = "Solved in " + fmt(elapsed) + "!";
+    save();
+  }
+
+  document.getElementById("undo").onclick = function () {
+    if (solved || !history.length) return;
+    var h = history.pop(); values = h.values; notes = h.notes;
+    showErrors = false; render(); save();
+  };
+  document.getElementById("erase").onclick = function () {
+    if (solved || sel < 0 || game.puzzle[sel]) return;
+    pushHistory(); values[sel] = 0; notes[sel] = []; render(); save();
+  };
+  document.getElementById("notes").onclick = function () { noteMode = !noteMode; render(); };
+  document.getElementById("hint").onclick = function () {
+    if (solved) return;
+    var target = -1;
+    if (sel >= 0 && !game.puzzle[sel] && values[sel] !== game.solution[sel]) target = sel;
+    else {
+      var empties = [];
+      for (var i = 0; i < values.length; i++) if (values[i] !== game.solution[i]) empties.push(i);
+      if (empties.length) target = empties[Math.floor(Math.random() * empties.length)];
+    }
+    if (target < 0) return;
+    pushHistory();
+    values[target] = game.solution[target]; notes[target] = [];
+    clearPeerNotes(target, values[target]);
+    sel = target; msgEl.className = ""; msgEl.textContent = "Hint used";
+    render(); checkWin(); save();
+  };
+  document.getElementById("check").onclick = function () {
+    if (solved) return;
+    showErrors = true;
+    var wrong = 0, empty = 0;
+    for (var i = 0; i < values.length; i++) {
+      if (!values[i]) empty++; else if (values[i] !== game.solution[i]) wrong++;
+    }
+    msgEl.className = "";
+    msgEl.textContent = wrong ? wrong + " wrong cell" + (wrong > 1 ? "s" : "") + " highlighted"
+                              : (empty ? "No mistakes so far" : "");
+    render();
+  };
+  document.getElementById("new").onclick = function () { newGame(); };
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) save();
+    else if (!solved) startTimer();
+  });
+
+  var saved = load();
+  if (saved && S.LEVELS[saved.level]) {
+    level = saved.level; game = saved.game; values = saved.values; notes = saved.notes;
+    elapsed = saved.elapsed || 0; solved = !!saved.solved;
+    buildLevels(); buildBoard(); buildPad(); render();
+    if (solved) { msgEl.className = "win"; msgEl.textContent = "Solved in " + fmt(elapsed) + "!"; timerEl.textContent = fmt(elapsed); }
+    else startTimer();
+  } else {
+    newGame();
+  }
+})();
+</script>
+</body>
+</html>
